@@ -1,0 +1,52 @@
+%{
+#include <magic.h>
+#include <string.h>
+
+#include "fingerprint.h"
+%}
+struct mime_value {
+    const char *name;
+    file_type value;
+};
+%%
+image/png,IMAGE_PNG
+image/jpeg,IMAGE_JPG
+image/gif,IMAGE_GIF
+image/svg+xml,IMAGE_SVG
+video/webm,VIDEO_WEBM
+audio/webm,VIDEO_WEBM
+video/mp4,VIDEO_MP4
+%%
+
+static __thread magic_t cookie = NULL;
+
+static magic_t magic()
+{
+    if (!cookie)
+        cookie = magic_open(MAGIC_MIME_TYPE);
+
+    return cookie;
+}
+
+file_type fingerprint_buffer(void *buf, size_t len)
+{
+    const char *mime = magic_buffer(magic(), buf, len);
+    const struct mime_value *mv = mime_lookup(mime, strlen(mime));
+
+    if (mv)
+      return mv->value;
+    else
+      return UNKNOWN;
+}
+
+
+file_type fingerprint_file(const char *filename)
+{
+    const char *mime = magic_file(magic(), filename);
+    const struct mime_value *mv = mime_lookup(mime, strlen(mime));
+
+    if (mv)
+      return mv->value;
+    else
+      return UNKNOWN;
+}
