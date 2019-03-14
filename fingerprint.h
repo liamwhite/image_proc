@@ -11,7 +11,12 @@ typedef enum {
   UNKNOWN
 } file_type;
 
-file_type fingerprint_buffer(void *buf, size_t len);
+// Returns the associated enum value of the MIME type of
+// this buffer, or UNKNOWN.
+file_type fingerprint_buffer(const void *buf, size_t len);
+
+// Returns the associated enum value of the MIME type of
+// this file, or UNKNOWN.
 file_type fingerprint_file(const char *path);
 
 #endif // _FINGERPRINT_H

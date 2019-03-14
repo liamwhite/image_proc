@@ -2,8 +2,8 @@
 
 CC      := gcc
 RM      := rm
-LDFLAGS :=
-CFLAGS  := -fPIC
+LDFLAGS := $(shell pkg-config --libs GraphicsMagick)
+CFLAGS  := -fPIC $(shell pkg-config --cflags GraphicsMagick)
 FILES   := $(notdir $(wildcard *.c))
 OBJS    := $(FILES:.c=.o)
 

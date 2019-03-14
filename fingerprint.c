@@ -149,7 +149,7 @@ static magic_t magic()
     return cookie;
 }
 
-file_type fingerprint_buffer(void *buf, size_t len)
+file_type fingerprint_buffer(const void *buf, size_t len)
 {
     const char *mime = magic_buffer(magic(), buf, len);
     const struct mime_value *mv = mime_lookup(mime, strlen(mime));
