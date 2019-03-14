@@ -22,4 +22,17 @@ typedef struct {
     size_t len;
 } buf_t;
 
+typedef struct {
+    uint64_t r;
+    uint64_t g;
+    uint64_t b;
+} rect_sum_t;
+
+typedef struct {
+    uint32_t start_x;
+    uint32_t start_y;
+    uint32_t end_x;
+    uint32_t end_y;
+} rect_t;
+
 #endif // _IMAGE_COMMON_H

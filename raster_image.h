@@ -36,7 +36,7 @@ intensity_t raster_image_get_intensities(raster_image *ri);
 // behavior in the image.
 raster_image *raster_image_scale(raster_image *ri, size_t max_w, size_t max_h);
 
-// Write this raster_image to a file. Can return a standard errno.
+// Write this raster_image to a file.
 int raster_image_write_file(raster_image *ri, const char *filename);
 
 #endif // _RASTER_IMAGE_H

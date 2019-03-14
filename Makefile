@@ -3,14 +3,14 @@
 CC      := gcc
 RM      := rm
 LDFLAGS := $(shell pkg-config --libs GraphicsMagick)
-CFLAGS  := -fPIC $(shell pkg-config --cflags GraphicsMagick)
+CFLAGS  := -Os -fPIC $(shell pkg-config --cflags GraphicsMagick)
 FILES   := $(notdir $(wildcard *.c))
 OBJS    := $(FILES:.c=.o)
 
 all: libimage_proc.so
 
 clean:
-	$(RM) -fr $(OBJS) fingerprint.c
+	$(RM) -fr $(OBJS)
 
 libimage_proc.so: $(OBJS)
 	$(CC) $(LDFLAGS) $(OBJS) -shared -o libimageproc.so

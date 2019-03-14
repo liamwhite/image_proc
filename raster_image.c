@@ -3,6 +3,8 @@
 #include <string.h>
 #include <magick/api.h>
 
+#define MIN(x,y) ((x) < (y) ? (x) : (y))
+
 struct raster_image {
     Image *image;
     ImageInfo *info;
@@ -15,6 +17,7 @@ struct raster_image {
 raster_image *raster_image_from_buffer(const void *buf, size_t len)
 {
     ExceptionInfo ex;
+    Image *image;
 
     raster_image *ri = (raster_image *) calloc(1, sizeof(raster_image));
     if (!ri)
@@ -27,7 +30,12 @@ raster_image *raster_image_from_buffer(const void *buf, size_t len)
     if (!ri->info)
         goto error;
 
-    ri->image = BlobToImage(ri->info, buf, len, &ex);
+    image = BlobToImage(ri->info, buf, len, &ex);
+    if (!image)
+        goto error;
+
+    ri->image = AutoOrientImage(image, image->orientation, &ex);
+    DestroyImage(image);
     if (!ri->image)
         goto error;
 
@@ -49,6 +57,7 @@ error:
 raster_image *raster_image_from_file(const char *filename)
 {
     ExceptionInfo ex;
+    Image *image;
 
     raster_image *ri = (raster_image *) calloc(1, sizeof(raster_image));
     if (!ri)
@@ -67,7 +76,12 @@ raster_image *raster_image_from_file(const char *filename)
     // Stupid GM max string length
     strncpy(ri->info->filename, filename, MaxTextExtent);
 
-    ri->image = ReadImage(ri->info, &ex);
+    image = ReadImage(ri->info, &ex);
+    if (!image)
+        goto error;
+
+    ri->image = AutoOrientImage(image, image->orientation, &ex);
+    DestroyImage(image);
     if (!ri->image)
         goto error;
 
@@ -109,7 +123,63 @@ size_t raster_image_frame_count(raster_image *ri)
     return ri->frames;
 }
 
-static intensity_t internal_intensities_get(Image *frame); // XXX
+static MagickPassFail pixel_iterator(
+    void *dat,
+    const void *dontcare1,
+    const Image *dontcare2,
+    const PixelPacket *pixels,
+    const IndexPacket *dontcare3,
+    const long npixels,
+    ExceptionInfo *dontcare4
+)
+{
+    rect_sum_t *mem = (rect_sum_t *) dat;
+    rect_sum_t curr = *mem;
+
+    for (long i = 0; i < npixels; ++i) {
+        PixelPacket p = pixels[i];
+
+        curr.r += p.red;
+        curr.g += p.green;
+        curr.b += p.blue;
+    }
+
+    *mem = curr;
+}
+
+static rect_sum_t internal_intensities_get(Image *frame, rect_t bounds)
+{
+    // Empty sum is defined to be 0
+    rect_sum_t curr = { 0 };
+
+    ExceptionInfo ex;
+    GetExceptionInfo(&ex);
+
+    PixelIterateMonoRead(
+        &pixel_iterator,
+        NULL,
+        "Intensity sum",
+        &curr,
+        NULL,
+        bounds.start_x,
+        bounds.start_y,
+        bounds.end_x - bounds.start_x,
+        bounds.end_y - bounds.start_y,
+        frame,
+        &ex
+    );
+
+    DestroyExceptionInfo(&ex);
+
+    return curr;
+}
+
+static float sum_intensity(rect_sum_t sum, uint32_t npixels)
+{
+    return (sum.r / npixels) * 0.2126 +
+           (sum.g / npixels) * 0.7152 +
+           (sum.b / npixels) * 0.0772;
+}
 
 // Gets corner intensities for this raster_image.
 // This takes the median frame for APNG/GIF.
@@ -121,11 +191,28 @@ intensity_t raster_image_get_intensities(raster_image *ri)
     for (size_t i = 0; i < ri->frames / 2; ++i)
         frame = frame->next;
 
-    return internal_intensities_get(frame);
+    uint32_t w = ri->dimensions.width;
+    uint32_t h = ri->dimensions.height;
+
+    rect_sum_t ins[] = {
+        internal_intensities_get(frame, (rect_t) { 0, 0, w/2, h/2 }), // nw
+        internal_intensities_get(frame, (rect_t) { w/2, 0, w, h/2 }), // ne
+        internal_intensities_get(frame, (rect_t) { 0, h/2, w/2, h }), // sw
+        internal_intensities_get(frame, (rect_t) { w/2, h/2, w, h }), // se
+        internal_intensities_get(frame, (rect_t) { 0, 0, w, h })      // avg
+    };
+
+    return (intensity_t) {
+        .nw  = sum_intensity(ins[0], w*h/4),
+        .ne  = sum_intensity(ins[1], w*h/4),
+        .sw  = sum_intensity(ins[2], w*h/4),
+        .se  = sum_intensity(ins[3], w*h/4),
+        .avg = sum_intensity(ins[4], w*h)
+    };
 }
 
 // Scale this raster_image proportionally to either a height of max_h,
-// or a width of max_w, whichever is greater. This preserves any animation
+// or a width of max_w, whichever is lesser. This preserves any animation
 // behavior in the image.
 raster_image *raster_image_scale(raster_image *ri, size_t max_w, size_t max_h)
 {
@@ -144,16 +231,26 @@ raster_image *raster_image_scale(raster_image *ri, size_t max_w, size_t max_h)
     if (!si->image)
         goto error;
 
+    // Set up exception handling
+    GetExceptionInfo(&ex);
+
+    double ratio   = MIN((double) max_w / ri->dimensions.width, (double) max_h / ri->dimensions.height);
+    uint32_t new_w = MIN(ri->dimensions.width * ratio, max_w);
+    uint32_t new_h = MIN(ri->dimensions.height * ratio, max_h);
+
     while (frame) {
-        // XXX
-        Image *scaled = ResizeImage(frame, 500, 500, LanczosFilter, 1.0, &ex);
+        Image *scaled = ResizeImage(frame, new_w, new_h, LanczosFilter, 1.0, &ex);
         if (!scaled)
             goto error;
 
-        AppendImageToList(&ri->image, scaled);
+        AppendImageToList(&si->image, scaled);
 
         frame = frame->next;
     }
+
+    si->frames = ri->frames;
+    si->dimensions.width  = new_w;
+    si->dimensions.height = new_h;
 
     DestroyExceptionInfo(&ex);
     return si;
@@ -164,9 +261,24 @@ error:
     return NULL;
 }
 
-// Write this raster_image to a file. Can return a standard errno.
-int raster_image_write_file(raster_image *ri, const char *filename);
+// Write this raster_image to a file. May return an error code.
+int raster_image_write_file(raster_image *ri, const char *filename)
+{
+    ExceptionInfo ex;
+
+    // Set up exception handling
+    GetExceptionInfo(&ex);
+
+    int ret = ImageToFile(ri->image, filename, &ex);
+
+    DestroyExceptionInfo(&ex);
+
+    return ret;
+}
 
 // Try to optimize this file. Returns 1 if the optimization reduced the size
 // of the file and 0 otherwise.
-int raster_image_optimize(raster_image *ri);
+int raster_image_optimize(raster_image *ri)
+{
+    return 0;
+}
