@@ -1,22 +1,25 @@
 .PHONY: all clean
 
-CC      := gcc
-RM      := rm
-LDFLAGS := $(shell pkg-config --libs GraphicsMagick)
-CFLAGS  := -Os -fPIC $(shell pkg-config --cflags GraphicsMagick)
-FILES   := $(notdir $(wildcard *.c))
-OBJS    := $(FILES:.c=.o)
+CC         := gcc
+RM         := rm
+LDFLAGS    := $(shell pkg-config --libs GraphicsMagick)
+CFLAGS     := -Os -fPIC -Iinclude $(shell pkg-config --cflags GraphicsMagick)
+SRC_FILES  := $(foreach file,$(notdir $(wildcard src/*.c)),src/$(file))
+TEST_FILES := $(foreach file,$(notdir $(wildcard test/*.c)),test/$(file))
+SRC_OBJS   := $(SRC_FILES:.c=.o)
+TEST_OBJS  := $(TEST_FILES:.c=.o)
+LIB_OBJ    := libimage_proc.so
 
-all: libimage_proc.so
+all: $(LIB_OBJ)
 
 clean:
-	$(RM) -fr $(OBJS)
+	$(RM) -fr $(SRC_OBJS) $(TEST_OBJS) $(LIB_OBJ)
 
-libimage_proc.so: $(OBJS)
-	$(CC) $(LDFLAGS) $(OBJS) -shared -o libimageproc.so
+$(LIB_OBJ): $(SRC_OBJS)
+	$(CC) $(LDFLAGS) $(SRC_OBJS) -shared -o $(LIB_OBJ)
 
-%.o: %.c
+src/%.o: src/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-fingerprint.c: fingerprint.gperf
+src/fingerprint.c: src/fingerprint.gperf
 	 gperf -CGD fingerprint.gperf -t -K name -N mime_lookup > fingerprint.c
