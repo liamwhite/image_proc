@@ -1,5 +1,5 @@
 /* ANSI-C code produced by gperf version 3.1 */
-/* Command-line: gperf -CGD -t -K name -N mime_lookup fingerprint.gperf  */
+/* Command-line: gperf -CGD -t -K name -N mime_lookup src/fingerprint.gperf  */
 /* Computed positions: -k'1,7' */
 
 #if !((' ' == 32) && ('!' == 33) && ('"' == 34) && ('#' == 35) \
@@ -29,13 +29,15 @@
 #error "gperf generated tables don't work with this execution character set. Please report a bug to <bug-gperf@gnu.org>."
 #endif
 
-#line 1 "fingerprint.gperf"
+#line 1 "src/fingerprint.gperf"
 
 #include <magic.h>
 #include <string.h>
 
+#include <stdio.h>
+
 #include "fingerprint.h"
-#line 7 "fingerprint.gperf"
+#line 9 "src/fingerprint.gperf"
 struct mime_value {
     const char *name;
     file_type value;
@@ -92,19 +94,19 @@ hash (register const char *str, register size_t len)
 
 static const struct mime_value wordlist[] =
   {
-#line 12 "fingerprint.gperf"
+#line 14 "src/fingerprint.gperf"
     {"image/png",IMAGE_PNG},
-#line 16 "fingerprint.gperf"
+#line 18 "src/fingerprint.gperf"
     {"video/webm",VIDEO_WEBM},
-#line 14 "fingerprint.gperf"
+#line 16 "src/fingerprint.gperf"
     {"image/gif",IMAGE_GIF},
-#line 17 "fingerprint.gperf"
+#line 19 "src/fingerprint.gperf"
     {"audio/webm",VIDEO_WEBM},
-#line 15 "fingerprint.gperf"
+#line 17 "src/fingerprint.gperf"
     {"image/svg+xml",IMAGE_SVG},
-#line 18 "fingerprint.gperf"
+#line 20 "src/fingerprint.gperf"
     {"video/mp4",VIDEO_MP4},
-#line 13 "fingerprint.gperf"
+#line 15 "src/fingerprint.gperf"
     {"image/jpeg",IMAGE_JPG}
   };
 
@@ -136,15 +138,17 @@ mime_lookup (register const char *str, register size_t len)
     }
   return 0;
 }
-#line 19 "fingerprint.gperf"
+#line 21 "src/fingerprint.gperf"
 
 
 static __thread magic_t cookie = NULL;
 
 static magic_t magic()
 {
-    if (!cookie)
+    if (!cookie) {
         cookie = magic_open(MAGIC_MIME_TYPE);
+        magic_load(cookie, NULL);
+    }
 
     return cookie;
 }
@@ -152,6 +156,9 @@ static magic_t magic()
 file_type fingerprint_buffer(const void *buf, size_t len)
 {
     const char *mime = magic_buffer(magic(), buf, len);
+    if (!mime)
+      return UNKNOWN;
+
     const struct mime_value *mv = mime_lookup(mime, strlen(mime));
 
     if (mv)
@@ -164,6 +171,9 @@ file_type fingerprint_buffer(const void *buf, size_t len)
 file_type fingerprint_file(const char *filename)
 {
     const char *mime = magic_file(magic(), filename);
+    if (!mime)
+      return UNKNOWN;
+
     const struct mime_value *mv = mime_lookup(mime, strlen(mime));
 
     if (mv)

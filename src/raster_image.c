@@ -104,8 +104,11 @@ void raster_image_free(raster_image *ri)
     if (!ri)
         return;
 
-    if (ri->image) DestroyImage(ri->image);
-    if (ri->info) DestroyImageInfo(ri->info);
+    if (ri->image)
+      DestroyImage(ri->image);
+
+    if (ri->info)
+      DestroyImageInfo(ri->info);
 
     free(ri);
 }
