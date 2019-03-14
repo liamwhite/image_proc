@@ -1,2 +1,4 @@
 *.o
 *.so
+/test/fingerprint_test
+/test/raster_image_test
