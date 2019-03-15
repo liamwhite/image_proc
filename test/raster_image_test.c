@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <stddef.h>
+#include <stdlib.h>
 
 #include "raster_image.h"
 
@@ -39,6 +40,13 @@ void test_load_file_jpg()
     assert(dim.height == 768);
     assert(frames == 1);
 
+    intensity_t i = raster_image_get_intensities(ri);
+    assert(abs(i.nw - 28.893986) <= 1e-3);
+    assert(abs(i.ne - 27.815023) <= 1e-3);
+    assert(abs(i.sw - 37.484633) <= 1e-3);
+    assert(abs(i.se - 36.998046) <= 1e-3);
+    assert(abs(i.avg - 32.794994) <= 1e-3);
+
     raster_image_free(ri);
 }
 
@@ -53,6 +61,13 @@ void test_load_file_png()
     assert(dim.width == 561);
     assert(dim.height == 535);
     assert(frames == 1);
+
+    intensity_t i = raster_image_get_intensities(ri);
+    assert(abs(i.nw - 73.120985) <= 1e-3);
+    assert(abs(i.ne - 72.824828) <= 1e-3);
+    assert(abs(i.sw - 67.314487) <= 1e-3);
+    assert(abs(i.se - 68.514023) <= 1e-3);
+    assert(abs(i.avg - 70.432392) <= 1e-3);
 
     raster_image_free(ri);
 }
@@ -69,6 +84,13 @@ void test_load_file_gif_static()
     assert(dim.height == 344);
     assert(frames == 1);
 
+    intensity_t i = raster_image_get_intensities(ri);
+    assert(abs(i.nw - 47.720603) <= 1e-3);
+    assert(abs(i.ne - 47.918849) <= 1e-3);
+    assert(abs(i.sw - 48.038489) <= 1e-3);
+    assert(abs(i.se - 48.644908) <= 1e-3);
+    assert(abs(i.avg - 48.077841) <= 1e-3);
+
     raster_image_free(ri);
 }
 
@@ -83,6 +105,13 @@ void test_load_file_gif_animated()
     assert(dim.width == 277);
     assert(dim.height == 344);
     assert(frames == 163);
+
+    intensity_t i = raster_image_get_intensities(ri);
+    assert(abs(i.nw - 47.603815) <= 1e-3);
+    assert(abs(i.ne - 48.237846) <= 1e-3);
+    assert(abs(i.sw - 47.902737) <= 1e-3);
+    assert(abs(i.se - 49.262892) <= 1e-3);
+    assert(abs(i.avg - 48.250947) <= 1e-3);
 
     raster_image_free(ri);
 }

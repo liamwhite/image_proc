@@ -152,9 +152,9 @@ static MagickPassFail pixel_iterator(
     for (long i = 0; i < npixels; ++i) {
         PixelPacket p = pixels[i];
 
-        curr.r += p.red;
-        curr.g += p.green;
-        curr.b += p.blue;
+        curr.r += p.red / (sizeof(Quantum) * 128);
+        curr.g += p.green / (sizeof(Quantum) * 128);
+        curr.b += p.blue / (sizeof(Quantum) * 128);
     }
 
     *mem = curr;
@@ -191,9 +191,19 @@ static rect_sum_t internal_intensities_get(Image *frame, rect_t bounds)
 
 static float sum_intensity(rect_sum_t sum, uint32_t npixels)
 {
-    return (sum.r / npixels) * 0.2126 +
-           (sum.g / npixels) * 0.7152 +
-           (sum.b / npixels) * 0.0772;
+    return ((sum.b / npixels) * 0.2126 +
+            (sum.g / npixels) * 0.7152 +
+            (sum.r / npixels) * 0.0772) / 3;
+}
+
+static Image *get_coalesced(Image *in)
+{
+    ExceptionInfo ex;
+    GetExceptionInfo(&ex);
+    Image *out = CoalesceImages(in, &ex);
+    DestroyExceptionInfo(&ex);
+
+    return out;
 }
 
 // Gets corner intensities for this raster_image.
@@ -201,10 +211,20 @@ static float sum_intensity(rect_sum_t sum, uint32_t npixels)
 intensity_t raster_image_get_intensities(raster_image *ri)
 {
     Image *frame = ri->image;
+    int dispose = 0;
 
-    // Go to median frame
-    for (size_t i = 0; i < ri->frames / 2; ++i)
-        frame = frame->next;
+    if (ri->frames > 1) {
+        frame = get_coalesced(frame);
+
+        if (!frame)
+            frame = ri->image;
+        else
+            dispose = 1;
+
+        // Go to median frame
+        for (size_t i = 0; i < ri->frames / 2; ++i)
+            frame = frame->next;
+    }
 
     uint32_t w = ri->dimensions.width;
     uint32_t h = ri->dimensions.height;
@@ -216,6 +236,9 @@ intensity_t raster_image_get_intensities(raster_image *ri)
         internal_intensities_get(frame, (rect_t) { w/2, h/2, w, h }), // se
         internal_intensities_get(frame, (rect_t) { 0, 0, w, h })      // avg
     };
+
+    if (dispose)
+        DestroyImageList(frame);
 
     return (intensity_t) {
         .nw  = sum_intensity(ins[0], w*h/4),
