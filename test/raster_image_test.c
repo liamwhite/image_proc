@@ -50,6 +50,22 @@ void test_load_file_jpg()
     raster_image_free(ri);
 }
 
+void test_load_file_jpg_orient()
+{
+    raster_image *ri = raster_image_from_file("test/test_jpeg_orient.jpg");
+    assert(ri != NULL);
+
+    dim_t  dim    = raster_image_dimensions(ri);
+    size_t frames = raster_image_frame_count(ri);
+
+    assert(dim.width == 768);
+    assert(dim.height == 1024);
+    assert(frames == 1);
+
+    raster_image_free(ri);
+}
+
+
 void test_load_file_png()
 {
     raster_image *ri = raster_image_from_file("test/test_png.png");
@@ -123,6 +139,7 @@ int main(int argc, char *argv[])
 
     // Test loading various files
     test_load_file_jpg();
+    test_load_file_jpg_orient();
     test_load_file_png();
     test_load_file_gif_static();
     test_load_file_gif_animated();
