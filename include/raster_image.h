@@ -11,10 +11,6 @@ raster_image *raster_image_from_buffer(const void *buf, size_t len);
 
 // Returns a new raster_image pointer if this file was
 // successfully loaded, or NULL if it failed to load.
-//
-// This method is not very robust compared to the equivalent from_buffer
-// method, because it cannot load files with filenames of arbitrary length.
-// You should probably use {raster_image_from_buffer} instead.
 raster_image *raster_image_from_file(const char *filename);
 
 // Invalidates and frees this raster_image.
@@ -36,7 +32,10 @@ intensity_t raster_image_get_intensities(raster_image *ri);
 // behavior in the image.
 raster_image *raster_image_scale(raster_image *ri, size_t max_w, size_t max_h);
 
+// Write this raster_image to memory. You must free() the returned memory.
+buf_t raster_image_to_buffer(raster_image *ri);
+
 // Write this raster_image to a file.
-int raster_image_write_file(raster_image *ri, const char *filename);
+int raster_image_to_file(raster_image *ri, const char *filename);
 
 #endif // _RASTER_IMAGE_H

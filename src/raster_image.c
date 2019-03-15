@@ -12,26 +12,10 @@ struct raster_image {
     dim_t dimensions;
 };
 
-// Returns a new raster_image pointer if this buffer was
-// successfully loaded, or NULL if it failed to load.
-raster_image *raster_image_from_buffer(const void *buf, size_t len)
+raster_image *setup_raster_image(raster_image *ri)
 {
     ExceptionInfo ex;
-
-    raster_image *ri = (raster_image *) calloc(1, sizeof(raster_image));
-    if (!ri)
-        goto error;
-
-    // Set up exception handling
     GetExceptionInfo(&ex);
-
-    ri->info = CloneImageInfo(NULL);
-    if (!ri->info)
-        goto error;
-
-    ri->image = BlobToImage(ri->info, buf, len, &ex);
-    if (!ri->image)
-        goto error;
 
     ri->frames = GetImageListLength(ri->image);
     if (ri->frames == 1) {
@@ -60,6 +44,37 @@ error:
     return NULL;
 }
 
+// Returns a new raster_image pointer if this buffer was
+// successfully loaded, or NULL if it failed to load.
+raster_image *raster_image_from_buffer(const void *buf, size_t len)
+{
+    ExceptionInfo ex;
+
+    raster_image *ri = (raster_image *) calloc(1, sizeof(raster_image));
+    if (!ri)
+        goto error;
+
+    // Set up exception handling
+    GetExceptionInfo(&ex);
+
+    ri->info = CloneImageInfo(NULL);
+    if (!ri->info)
+        goto error;
+
+    ri->image = BlobToImage(ri->info, buf, len, &ex);
+    if (!ri->image)
+        goto error;
+
+    DestroyExceptionInfo(&ex);
+
+    return setup_raster_image(ri);
+
+error:
+    raster_image_free(ri);
+    DestroyExceptionInfo(&ex);
+    return NULL;
+}
+
 // Returns a new raster_image pointer if this file was
 // successfully loaded, or NULL if it failed to load.
 raster_image *raster_image_from_file(const char *filename)
@@ -70,9 +85,6 @@ raster_image *raster_image_from_file(const char *filename)
     if (!ri)
         goto error;
 
-    if (strlen(filename) >= MaxTextExtent)
-        goto error;
-
     // Set up exception handling
     GetExceptionInfo(&ex);
 
@@ -80,33 +92,17 @@ raster_image *raster_image_from_file(const char *filename)
     if (!ri->info)
         goto error;
 
-    // Stupid GM max string length
-    strncpy(ri->info->filename, filename, MaxTextExtent);
+    ri->info->file = fopen(filename, "rb");
+    if (!ri->info->file)
+        goto error;
 
     ri->image = ReadImage(ri->info, &ex);
     if (!ri->image)
         goto error;
 
-    ri->frames = GetImageListLength(ri->image);
-    if (ri->frames == 1) {
-        // Automatically orient the image
-        Image *rotated = ri->image;
-        ri->image = AutoOrientImage(rotated, rotated->orientation, &ex);
-        DestroyImageList(rotated);
-        if (!ri->image)
-            goto error;
-
-        StripImage(ri->image);
-
-        ri->dimensions.width  = ri->image->columns;
-        ri->dimensions.height = ri->image->rows;
-    } else {
-        ri->dimensions.width  = ri->image->page.width;
-        ri->dimensions.height = ri->image->page.height;
-    }
-
     DestroyExceptionInfo(&ex);
-    return ri;
+
+    return setup_raster_image(ri);
 
 error:
     raster_image_free(ri);
@@ -316,6 +312,21 @@ error:
     return NULL;
 }
 
+
+buf_t raster_image_to_buffer(raster_image *ri)
+{
+    buf_t ret = { 0 };
+
+    ExceptionInfo ex;
+    GetExceptionInfo(&ex);
+
+    ret.buf = ImageToBlob(ri->info, ri->image, &ret.len, &ex);
+
+    DestroyExceptionInfo(&ex);
+
+    return ret;
+}
+
 // Write this raster_image to a file. May return an error code.
 int raster_image_write_file(raster_image *ri, const char *filename)
 {
@@ -324,11 +335,19 @@ int raster_image_write_file(raster_image *ri, const char *filename)
     // Set up exception handling
     GetExceptionInfo(&ex);
 
-    int ret = ImageToFile(ri->image, filename, &ex);
+    ri->info->file = fopen(filename, "wb");
+    if (!ri->info->file)
+        goto error;
+
+    int ret = WriteImage(ri->info, ri->image);
 
     DestroyExceptionInfo(&ex);
 
     return ret;
+
+error:
+    DestroyExceptionInfo(&ex);
+    return MagickFalse;
 }
 
 // Try to optimize this file. Returns 1 if the optimization reduced the size
