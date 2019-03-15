@@ -14,4 +14,14 @@ static void initialize_magick()
 
     for (int i = 0; i < SIGSYS; ++i)
         sigaction(i, &saved_signals[i], NULL);
+
+    // 10MB max, no multithreading
+    SetMagickResourceLimit(MemoryResource, 10000000);
+    SetMagickResourceLimit(ThreadsResource, 1);
+}
+
+__attribute__((destructor))
+static void uninitialize_magick()
+{
+    DestroyMagick();
 }

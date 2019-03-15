@@ -17,7 +17,6 @@ struct raster_image {
 raster_image *raster_image_from_buffer(const void *buf, size_t len)
 {
     ExceptionInfo ex;
-    Image *image;
 
     raster_image *ri = (raster_image *) calloc(1, sizeof(raster_image));
     if (!ri)
@@ -30,12 +29,7 @@ raster_image *raster_image_from_buffer(const void *buf, size_t len)
     if (!ri->info)
         goto error;
 
-    image = BlobToImage(ri->info, buf, len, &ex);
-    if (!image)
-        goto error;
-
-    ri->image = AutoOrientImage(image, image->orientation, &ex);
-    DestroyImage(image);
+    ri->image = BlobToImage(ri->info, buf, len, &ex);
     if (!ri->image)
         goto error;
 
@@ -57,7 +51,6 @@ error:
 raster_image *raster_image_from_file(const char *filename)
 {
     ExceptionInfo ex;
-    Image *image;
 
     raster_image *ri = (raster_image *) calloc(1, sizeof(raster_image));
     if (!ri)
@@ -76,12 +69,7 @@ raster_image *raster_image_from_file(const char *filename)
     // Stupid GM max string length
     strncpy(ri->info->filename, filename, MaxTextExtent);
 
-    image = ReadImage(ri->info, &ex);
-    if (!image)
-        goto error;
-
-    ri->image = AutoOrientImage(image, image->orientation, &ex);
-    DestroyImage(image);
+    ri->image = ReadImage(ri->info, &ex);
     if (!ri->image)
         goto error;
 
@@ -105,7 +93,7 @@ void raster_image_free(raster_image *ri)
         return;
 
     if (ri->image)
-      DestroyImage(ri->image);
+      DestroyImageList(ri->image);
 
     if (ri->info)
       DestroyImageInfo(ri->info);
@@ -148,6 +136,8 @@ static MagickPassFail pixel_iterator(
     }
 
     *mem = curr;
+
+    return MagickPass;
 }
 
 static rect_sum_t internal_intensities_get(Image *frame, rect_t bounds)

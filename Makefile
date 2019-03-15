@@ -1,6 +1,6 @@
 .PHONY: all clean test
 
-CC         := gcc
+CC         := gcc -Wall
 RM         := rm
 LDFLAGS    := -lmagic $(shell pkg-config --libs GraphicsMagick)
 CFLAGS     := -g3 -Os -fPIC -Iinclude $(shell pkg-config --cflags GraphicsMagick)

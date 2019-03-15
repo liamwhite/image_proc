@@ -17,10 +17,12 @@ void test_load_buf()
     raster_image *ri = raster_image_from_buffer(inline_png, sizeof(inline_png));
     assert(ri != NULL);
 
-    dim_t dim = raster_image_dimensions(ri);
+    dim_t  dim    = raster_image_dimensions(ri);
+    size_t frames = raster_image_frame_count(ri);
 
     assert(dim.width == 16);
     assert(dim.height == 16);
+    assert(frames == 1);
 
     raster_image_free(ri);
 }
@@ -30,10 +32,12 @@ void test_load_file_jpg()
     raster_image *ri = raster_image_from_file("test/test_jpeg.jpg");
     assert(ri != NULL);
 
-    dim_t dim = raster_image_dimensions(ri);
+    dim_t  dim    = raster_image_dimensions(ri);
+    size_t frames = raster_image_frame_count(ri);
 
     assert(dim.width == 1024);
     assert(dim.height == 768);
+    assert(frames == 1);
 
     raster_image_free(ri);
 }
@@ -43,10 +47,12 @@ void test_load_file_png()
     raster_image *ri = raster_image_from_file("test/test_png.png");
     assert(ri != NULL);
 
-    dim_t dim = raster_image_dimensions(ri);
+    dim_t  dim    = raster_image_dimensions(ri);
+    size_t frames = raster_image_frame_count(ri);
 
     assert(dim.width == 561);
     assert(dim.height == 535);
+    assert(frames == 1);
 
     raster_image_free(ri);
 }
@@ -56,24 +62,27 @@ void test_load_file_gif_static()
     raster_image *ri = raster_image_from_file("test/test_gif_static.gif");
     assert(ri != NULL);
 
-    dim_t dim = raster_image_dimensions(ri);
+    dim_t  dim    = raster_image_dimensions(ri);
+    size_t frames = raster_image_frame_count(ri);
 
     assert(dim.width == 277);
     assert(dim.height == 344);
+    assert(frames == 1);
 
     raster_image_free(ri);
 }
-
 
 void test_load_file_gif_animated()
 {
     raster_image *ri = raster_image_from_file("test/test_gif_animated.gif");
     assert(ri != NULL);
 
-    dim_t dim = raster_image_dimensions(ri);
+    dim_t  dim    = raster_image_dimensions(ri);
+    size_t frames = raster_image_frame_count(ri);
 
     assert(dim.width == 277);
     assert(dim.height == 344);
+    assert(frames == 163);
 
     raster_image_free(ri);
 }
