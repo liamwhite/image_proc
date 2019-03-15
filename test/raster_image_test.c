@@ -97,4 +97,6 @@ int main(int argc, char *argv[])
     test_load_file_png();
     test_load_file_gif_static();
     test_load_file_gif_animated();
+
+    return 0;
 }

@@ -33,9 +33,20 @@ raster_image *raster_image_from_buffer(const void *buf, size_t len)
     if (!ri->image)
         goto error;
 
+    ri->frames = GetImageListLength(ri->image);
+    if (ri->frames == 1) {
+        // Automatically orient the image
+        Image *rotated = ri->image;
+        ri->image = AutoOrientImage(rotated, rotated->orientation, &ex);
+        DestroyImageList(rotated);
+        if (!ri->image)
+            goto error;
+
+        StripImage(ri->image);
+    }
+
     ri->dimensions.width  = ri->image->columns;
     ri->dimensions.height = ri->image->rows;
-    ri->frames = GetImageListLength(ri->image);
 
     DestroyExceptionInfo(&ex);
     return ri;
@@ -73,9 +84,20 @@ raster_image *raster_image_from_file(const char *filename)
     if (!ri->image)
         goto error;
 
+    ri->frames = GetImageListLength(ri->image);
+    if (ri->frames == 1) {
+        // Automatically orient the image
+        Image *rotated = ri->image;
+        ri->image = AutoOrientImage(rotated, rotated->orientation, &ex);
+        DestroyImageList(rotated);
+        if (!ri->image)
+            goto error;
+
+        StripImage(ri->image);
+    }
+
     ri->dimensions.width  = ri->image->columns;
     ri->dimensions.height = ri->image->rows;
-    ri->frames = GetImageListLength(ri->image);
 
     DestroyExceptionInfo(&ex);
     return ri;

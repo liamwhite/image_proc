@@ -53,4 +53,6 @@ int main(int argc, char *argv[])
     test_fp_gif_static();
     test_fp_gif_animated();
     test_fp_unknown();
+
+    return 0;
 }
