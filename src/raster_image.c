@@ -5,6 +5,8 @@
 
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
 
+Image *gif_optimize(Image *coalesced); // src/gif_optimize.c
+
 struct raster_image {
     Image *image;
     ImageInfo *info;
@@ -269,7 +271,7 @@ raster_image *raster_image_scale(raster_image *ri, size_t max_w, size_t max_h)
     if (!si)
         goto error;
 
-    si->info  = CloneImageInfo(si->info);
+    si->info = CloneImageInfo(si->info);
     if (!si->info)
         goto error;
 
@@ -277,24 +279,14 @@ raster_image *raster_image_scale(raster_image *ri, size_t max_w, size_t max_h)
 
     double ratio = MIN((double) max_w / ri->dimensions.width, (double) max_h / ri->dimensions.height);
 
-    // Doesn't matter if we don't coalesce here, but everything
-    // must be scaled evenly (including page offsets)
-    // FIXME: this must be coalesced or the output is corrupted
+    // Everything must be scaled evenly
     while (frame) {
         uint32_t new_w = frame->columns * ratio;
         uint32_t new_h = frame->rows * ratio;
 
-        RectangleInfo new_tile = frame->tile_info;
-        new_tile.width  *= ratio;
-        new_tile.height *= ratio;
-        new_tile.x      *= ratio;
-        new_tile.y      *= ratio;
-
-        Image *scaled = ResizeImage(frame, new_w, new_h, LanczosFilter, 1.0, &ex);
+        Image *scaled = ResizeImage(frame, new_w, new_h, TriangleFilter, 1.0, &ex);
         if (!scaled)
             goto error;
-
-        scaled->tile_info = new_tile;
 
         AppendImageToList(&si->image, scaled);
 
@@ -324,6 +316,9 @@ buf_t raster_image_to_buffer(raster_image *ri)
     ExceptionInfo ex;
     GetExceptionInfo(&ex);
 
+    ri->info->interlace = NoInterlace;
+    ri->info->dither = MagickFalse;
+
     ret.buf = ImageToBlob(ri->info, ri->image, &ret.len, &ex);
 
     DestroyExceptionInfo(&ex);
@@ -339,6 +334,8 @@ int raster_image_to_file(raster_image *ri, const char *filename)
     // Set up exception handling
     GetExceptionInfo(&ex);
 
+    ri->info->interlace = NoInterlace;
+    ri->info->dither = MagickFalse;
     ri->info->file = fopen(filename, "wb+");
     if (!ri->info->file)
         goto error;
@@ -354,9 +351,19 @@ error:
     return MagickFalse;
 }
 
-// Try to optimize this file. Returns 1 if the optimization reduced the size
-// of the file and 0 otherwise.
+// Try to optimize this file. Returns 1 if an optimization was performed.
 int raster_image_optimize(raster_image *ri)
 {
-    return 0;
+    if (ri->frames == 1)
+        return 0;
+
+    Image *opt = gif_optimize(ri->image);
+    if (opt) {
+        DestroyImageList(ri->image);
+        ri->image = opt;
+
+        return 1;
+    } else {
+        return 0;
+    }
 }

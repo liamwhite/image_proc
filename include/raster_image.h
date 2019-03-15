@@ -38,4 +38,6 @@ buf_t raster_image_to_buffer(raster_image *ri);
 // Write this raster_image to a file.
 int raster_image_to_file(raster_image *ri, const char *filename);
 
+int raster_image_optimize(raster_image *ri);
+
 #endif // _RASTER_IMAGE_H
