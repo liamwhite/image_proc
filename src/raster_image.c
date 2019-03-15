@@ -195,9 +195,9 @@ static rect_sum_t internal_intensities_get(Image *frame, rect_t bounds)
 
 static float sum_intensity(rect_sum_t sum, uint32_t npixels)
 {
-    return ((sum.b / npixels) * 0.2126 +
+    return ((sum.r / npixels) * 0.2126 +
             (sum.g / npixels) * 0.7152 +
-            (sum.r / npixels) * 0.0772) / 3;
+            (sum.b / npixels) * 0.0772) / 3;
 }
 
 static Image *get_coalesced(Image *in)
