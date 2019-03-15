@@ -129,6 +129,28 @@ void test_load_file_gif_animated()
     assert(abs(i.se - 49.262892) <= 1e-3);
     assert(abs(i.avg - 48.250947) <= 1e-3);
 
+    // Verify dimensions, aspect ratio, and intensities
+
+    raster_image *si = raster_image_scale(ri, 50, 50);
+
+    dim    = raster_image_dimensions(si);
+    frames = raster_image_frame_count(si);
+
+    assert(dim.width <= 50);
+    assert(dim.height <= 50);
+    assert(abs((double) dim.width / dim.height - 277./344) <= 1e-3);
+    assert(frames == 163);
+
+    i = raster_image_get_intensities(si);
+    assert(abs(i.nw - 47.603815) <= 1e-3);
+    assert(abs(i.ne - 48.237846) <= 1e-3);
+    assert(abs(i.sw - 47.902737) <= 1e-3);
+    assert(abs(i.se - 49.262892) <= 1e-3);
+    assert(abs(i.avg - 48.250947) <= 1e-3);
+
+    raster_image_to_file(si, "test/test_gif_animated_scaled.gif");
+
+    raster_image_free(si);
     raster_image_free(ri);
 }
 

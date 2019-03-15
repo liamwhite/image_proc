@@ -50,12 +50,12 @@ raster_image *raster_image_from_buffer(const void *buf, size_t len)
 {
     ExceptionInfo ex;
 
+    // Set up exception handling
+    GetExceptionInfo(&ex);
+
     raster_image *ri = (raster_image *) calloc(1, sizeof(raster_image));
     if (!ri)
         goto error;
-
-    // Set up exception handling
-    GetExceptionInfo(&ex);
 
     ri->info = CloneImageInfo(NULL);
     if (!ri->info)
@@ -81,12 +81,12 @@ raster_image *raster_image_from_file(const char *filename)
 {
     ExceptionInfo ex;
 
+    // Set up exception handling
+    GetExceptionInfo(&ex);
+
     raster_image *ri = (raster_image *) calloc(1, sizeof(raster_image));
     if (!ri)
         goto error;
-
-    // Set up exception handling
-    GetExceptionInfo(&ex);
 
     ri->info = CloneImageInfo(NULL);
     if (!ri->info)
@@ -257,7 +257,13 @@ intensity_t raster_image_get_intensities(raster_image *ri)
 raster_image *raster_image_scale(raster_image *ri, size_t max_w, size_t max_h)
 {
     ExceptionInfo ex;
-    Image *frame = ri->image;
+    GetExceptionInfo(&ex);
+
+    Image *iframe = get_coalesced(ri->image);
+    if (!iframe)
+        goto error;
+
+    Image *frame = iframe;
 
     raster_image *si = (raster_image *) calloc(1, sizeof(raster_image));
     if (!si)
@@ -268,16 +274,12 @@ raster_image *raster_image_scale(raster_image *ri, size_t max_w, size_t max_h)
         goto error;
 
     si->image = NewImageList();
-    if (!si->image)
-        goto error;
-
-    // Set up exception handling
-    GetExceptionInfo(&ex);
 
     double ratio = MIN((double) max_w / ri->dimensions.width, (double) max_h / ri->dimensions.height);
 
     // Doesn't matter if we don't coalesce here, but everything
     // must be scaled evenly (including page offsets)
+    // FIXME: this must be coalesced or the output is corrupted
     while (frame) {
         uint32_t new_w = frame->columns * ratio;
         uint32_t new_h = frame->rows * ratio;
@@ -303,10 +305,12 @@ raster_image *raster_image_scale(raster_image *ri, size_t max_w, size_t max_h)
     si->dimensions.width  = ri->dimensions.width * ratio;
     si->dimensions.height = ri->dimensions.height * ratio;
 
+    DestroyImageList(iframe);
     DestroyExceptionInfo(&ex);
     return si;
 
 error:
+    if (iframe) DestroyImageList(iframe);
     raster_image_free(si);
     DestroyExceptionInfo(&ex);
     return NULL;
@@ -328,14 +332,14 @@ buf_t raster_image_to_buffer(raster_image *ri)
 }
 
 // Write this raster_image to a file. May return an error code.
-int raster_image_write_file(raster_image *ri, const char *filename)
+int raster_image_to_file(raster_image *ri, const char *filename)
 {
     ExceptionInfo ex;
 
     // Set up exception handling
     GetExceptionInfo(&ex);
 
-    ri->info->file = fopen(filename, "wb");
+    ri->info->file = fopen(filename, "wb+");
     if (!ri->info->file)
         goto error;
 

@@ -3,7 +3,7 @@
 CC         := gcc -Wall
 RM         := rm
 LDFLAGS    := -lmagic $(shell pkg-config --libs GraphicsMagick)
-CFLAGS     := -Os -fPIC -Iinclude $(shell pkg-config --cflags GraphicsMagick)
+CFLAGS     := -g3 -O0 -fPIC -Iinclude $(shell pkg-config --cflags GraphicsMagick)
 SRC_FILES  := $(foreach file,$(notdir $(wildcard src/*.c)),src/$(file))
 TEST_FILES := $(foreach file,$(notdir $(wildcard test/*.c)),test/$(file))
 SRC_OBJS   := $(SRC_FILES:.c=.o)
