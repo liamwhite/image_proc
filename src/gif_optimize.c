@@ -61,9 +61,9 @@ static MagickPassFail pixel_iterator(
         PixelPacket prev = prev_pixels[i];
         PixelPacket this = this_pixels[i];
 
-        int r_diff = prev.red - this.red;
-        int g_diff = prev.green - this.green;
-        int b_diff = prev.blue - this.blue;
+        int r_diff = (prev.red - this.red) * 0.2126;
+        int g_diff = (prev.green - this.green) * 0.7152;
+        int b_diff = (prev.blue - this.blue) * 0.0772;
         int a_diff = prev.opacity - this.opacity;
 
         uint64_t diffsq = r_diff*r_diff +
@@ -73,7 +73,7 @@ static MagickPassFail pixel_iterator(
 
         // Lossy: ignore changes in the input
         // that are likely to be imperceptible
-        if (diffsq > 16*65536)
+        if (diffsq > 40000)
             box_union(&box, p_info->row, i);
     }
 

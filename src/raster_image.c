@@ -361,6 +361,9 @@ int raster_image_optimize(raster_image *ri)
     if (opt) {
         DestroyImageList(ri->image);
         ri->image = opt;
+        ri->frames = GetImageListLength(ri->image);
+        ri->dimensions.width  = ri->image->columns;
+        ri->dimensions.height = ri->image->rows;
 
         return 1;
     } else {
