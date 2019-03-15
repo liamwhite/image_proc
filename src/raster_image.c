@@ -43,10 +43,13 @@ raster_image *raster_image_from_buffer(const void *buf, size_t len)
             goto error;
 
         StripImage(ri->image);
-    }
 
-    ri->dimensions.width  = ri->image->columns;
-    ri->dimensions.height = ri->image->rows;
+        ri->dimensions.width  = ri->image->columns;
+        ri->dimensions.height = ri->image->rows;
+    } else {
+        ri->dimensions.width  = ri->image->page.width;
+        ri->dimensions.height = ri->image->page.height;
+    }
 
     DestroyExceptionInfo(&ex);
     return ri;
@@ -94,10 +97,13 @@ raster_image *raster_image_from_file(const char *filename)
             goto error;
 
         StripImage(ri->image);
-    }
 
-    ri->dimensions.width  = ri->image->columns;
-    ri->dimensions.height = ri->image->rows;
+        ri->dimensions.width  = ri->image->columns;
+        ri->dimensions.height = ri->image->rows;
+    } else {
+        ri->dimensions.width  = ri->image->page.width;
+        ri->dimensions.height = ri->image->page.height;
+    }
 
     DestroyExceptionInfo(&ex);
     return ri;
@@ -272,23 +278,34 @@ raster_image *raster_image_scale(raster_image *ri, size_t max_w, size_t max_h)
     // Set up exception handling
     GetExceptionInfo(&ex);
 
-    double ratio   = MIN((double) max_w / ri->dimensions.width, (double) max_h / ri->dimensions.height);
-    uint32_t new_w = MIN(ri->dimensions.width * ratio, max_w);
-    uint32_t new_h = MIN(ri->dimensions.height * ratio, max_h);
+    double ratio = MIN((double) max_w / ri->dimensions.width, (double) max_h / ri->dimensions.height);
 
+    // Doesn't matter if we don't coalesce here, but everything
+    // must be scaled evenly (including page offsets)
     while (frame) {
+        uint32_t new_w = frame->columns * ratio;
+        uint32_t new_h = frame->rows * ratio;
+
+        RectangleInfo new_tile = frame->tile_info;
+        new_tile.width  *= ratio;
+        new_tile.height *= ratio;
+        new_tile.x      *= ratio;
+        new_tile.y      *= ratio;
+
         Image *scaled = ResizeImage(frame, new_w, new_h, LanczosFilter, 1.0, &ex);
         if (!scaled)
             goto error;
+
+        scaled->tile_info = new_tile;
 
         AppendImageToList(&si->image, scaled);
 
         frame = frame->next;
     }
 
-    si->frames = ri->frames;
-    si->dimensions.width  = new_w;
-    si->dimensions.height = new_h;
+    si->frames = GetImageListLength(ri->image);//ri->frames;
+    si->dimensions.width  = ri->dimensions.width * ratio;
+    si->dimensions.height = ri->dimensions.height * ratio;
 
     DestroyExceptionInfo(&ex);
     return si;
