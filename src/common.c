@@ -1,4 +1,5 @@
 #include <signal.h>
+#include <libavformat/avformat.h>
 #include <magick/api.h>
 
 __attribute__((constructor))
@@ -18,6 +19,12 @@ static void initialize_magick()
     // 30MB max, no multithreading
     SetMagickResourceLimit(MemoryResource, 30000000);
     SetMagickResourceLimit(ThreadsResource, 1);
+}
+
+__attribute__((constructor))
+static void initialize_av()
+{
+    //av_log_set_level(AV_LOG_QUIET);
 }
 
 __attribute__((destructor))

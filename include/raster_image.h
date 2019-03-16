@@ -24,12 +24,11 @@ dim_t raster_image_dimensions(raster_image *ri);
 size_t raster_image_frame_count(raster_image *ri);
 
 // Gets corner intensities for this raster_image.
-// This takes the median frame for APNG/GIF.
+// This takes the median frame for GIF.
 intensity_t raster_image_get_intensities(raster_image *ri);
 
 // Scale this raster_image proportionally to either a height of max_h,
-// or a width of max_w, whichever is lesser. This preserves any animation
-// behavior in the image.
+// or a width of max_w, whichever is lesser. This preserves GIF animation.
 raster_image *raster_image_scale(raster_image *ri, size_t max_w, size_t max_h);
 
 // Write this raster_image to memory. You must free() the returned memory.
