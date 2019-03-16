@@ -7,6 +7,7 @@
 #include <unistd.h>
 
 #include <libavformat/avformat.h>
+#include <libswscale/swscale.h>
 
 #include "video.h"
 
@@ -31,7 +32,14 @@ struct video {
 
     dim_t dimensions;
     double duration;
+    int64_t last_pts;
 };
+
+typedef struct {
+    uint8_t r;
+    uint8_t g;
+    uint8_t b;
+} rgb_pix;
 
 static int read_packet(void *opaque, uint8_t *buf, int buf_size)
 {
@@ -278,15 +286,16 @@ double video_duration(video *v)
         return v->duration;
 
     if (v->format->duration != AV_NOPTS_VALUE) {
-        // Format duration is in units of AV_TIME_BASE/s
+        // Format duration is in units of s/AV_TIME_BASE
         v->duration = v->format->duration / (double) AV_TIME_BASE;
+        v->last_pts = v->duration * vstream->time_base.den / vstream->time_base.num;
         return v->duration;
     }
- 
+
     // No idea what the duration is, so we will have to decode the entire
     // video in order to find it
     av_seek_frame(v->format, -1, 0, AVSEEK_FLAG_BACKWARD);
-    int64_t last_pts = 0;
+    v->last_pts = 0;
 
     while (1) {
         // done reading
@@ -295,13 +304,13 @@ double video_duration(video *v)
 
         // Not good enough to just look at the packet pts, unfortunately,
         // as libav does not seem to set it correctly in every case; we
-        // need to also pass the frame to the decoder to get the right dur.
+        // need to also pass the frame to the decoder to get the right pts.
         if (v->pkt->stream_index == v->vstream_idx) {
             if (avcodec_send_packet(v->vctx, v->pkt) != 0)
                 continue;
 
             if (avcodec_receive_frame(v->vctx, v->frame) == 0) {
-                last_pts = FFMAX(last_pts, v->frame->pts + v->pkt->duration);
+                v->last_pts = FFMAX(v->last_pts, v->frame->pts + v->pkt->duration);
                 av_frame_unref(v->frame);
             }
         }
@@ -310,10 +319,10 @@ double video_duration(video *v)
     }
 
     // pts duration is in units of s/ts
-    v->duration = last_pts * vstream->time_base.num / (double) vstream->time_base.den;
+    v->duration = v->last_pts * vstream->time_base.num / (double) vstream->time_base.den;
 
     // Reset the stream
-    av_seek_frame(v->format, 0, vstream->first_dts, AVSEEK_FLAG_BACKWARD);
+    av_seek_frame(v->format, -1, 0, AVSEEK_FLAG_BACKWARD);
 
     if (v->duration > 0)
         return v->duration;
@@ -321,10 +330,122 @@ double video_duration(video *v)
         return 0;
 }
 
+static float sum_intensity(rect_sum_t sum, uint32_t npixels)
+{
+    return ((sum.r / npixels) * 0.2126 +
+            (sum.g / npixels) * 0.7152 +
+            (sum.b / npixels) * 0.0772) / 3;
+}
+
+static rect_sum_t rect_sum(uint8_t *restrict opaque, uint32_t width, rect_t bounds)
+{
+    rgb_pix *restrict image = (rgb_pix *) opaque;
+
+    // The sum of an empty region is defined to be zero.
+    rect_sum_t ret = { 0 };
+
+    for (uint32_t i = bounds.start_y; i < bounds.end_y; ++i) {
+      for (uint32_t j = bounds.start_x; j < bounds.end_x; ++j) {
+          rgb_pix p = image[i * width + j];
+
+          ret.r += p.r;
+          ret.g += p.g;
+          ret.b += p.b;
+        }
+    }
+
+    return ret;
+}
+
+static void calculate_frame_intensities(video *v, intensity_t *i)
+{
+    // Do colorspace conversion with swscale.
+    //
+    // This frame is unlikely to be in RGB24, so we take the hit and
+    // convert it unconditionally. This is just memcpy if the format is
+    // already RGB24.
+    //
+    struct SwsContext *ctx = NULL;
+    uint8_t *rgb = NULL;
+    AVFrame *f = v->frame;
+    uint32_t w = f->width;
+    uint32_t h = f->height;
+
+    ctx = sws_getContext(w, h, v->vctx->pix_fmt, w, h, AV_PIX_FMT_RGB24, SWS_BILINEAR, NULL, NULL, NULL);
+
+    int32_t rgbstride = f->width * 3;
+    rgb = av_malloc(rgbstride * f->height);
+
+    if (!ctx || !rgb)
+        goto error;
+
+    sws_scale(ctx, (const uint8_t **) f->data, f->linesize, 0, h, &rgb, &rgbstride);
+
+    rect_sum_t ins[] = {
+        rect_sum(rgb, w, (rect_t) { 0, 0, w/2, h/2 }), // nw
+        rect_sum(rgb, w, (rect_t) { w/2, 0, w, h/2 }), // ne
+        rect_sum(rgb, w, (rect_t) { 0, h/2, w/2, h }), // sw
+        rect_sum(rgb, w, (rect_t) { w/2, h/2, w, h }), // se
+        rect_sum(rgb, w, (rect_t) { 0, 0, w, h })      // avg
+    };
+
+    *i = (intensity_t) {
+        .nw  = sum_intensity(ins[0], w*h/4),
+        .ne  = sum_intensity(ins[1], w*h/4),
+        .sw  = sum_intensity(ins[2], w*h/4),
+        .se  = sum_intensity(ins[3], w*h/4),
+        .avg = sum_intensity(ins[4], w*h)
+    };
+
+error:
+    if (ctx)
+        sws_freeContext(ctx);
+
+    if (rgb)
+        av_free(rgb);
+}
+
 // Gets corner intensities for the median time of this video.
 int video_get_intensities(video *v, intensity_t *i)
 {
-    return 0;
+    video_duration(v);
+
+    // no length?
+    if (v->duration <= 0)
+        return 0;
+
+    int64_t mid_time = v->duration * AV_TIME_BASE / 2;
+    int64_t mid_pts  = v->last_pts / 2;
+
+    // the animation may have at minimum one keyframe, so go there
+    av_seek_frame(v->format, -1, mid_time, AVSEEK_FLAG_BACKWARD);
+
+    int found = 0;
+
+    // now iterate until we find the frame we're looking for
+    while (!found) {
+        // done reading
+        if (av_read_frame(v->format, v->pkt) < 0)
+            break;
+
+        if (v->pkt->stream_index == v->vstream_idx) {
+            if (avcodec_send_packet(v->vctx, v->pkt) != 0)
+                continue;
+
+            if (avcodec_receive_frame(v->vctx, v->frame) == 0) {
+                if (v->frame->pts + v->pkt->duration >= mid_pts) {
+                    calculate_frame_intensities(v, i);
+                    found = 1;
+                }
+
+                av_frame_unref(v->frame);
+            }
+        }
+
+        av_packet_unref(v->pkt);
+    }
+
+    return found;
 }
 
 // Scale this video proportionally to either a height of max_h,

@@ -16,8 +16,8 @@ static void initialize_magick()
     for (int i = 0; i < SIGSYS; ++i)
         sigaction(i, &saved_signals[i], NULL);
 
-    // 30MB max, no multithreading
-    SetMagickResourceLimit(MemoryResource, 30000000);
+    // 300MB max, no multithreading
+    SetMagickResourceLimit(MemoryResource, 300000000);
     SetMagickResourceLimit(ThreadsResource, 1);
 }
 

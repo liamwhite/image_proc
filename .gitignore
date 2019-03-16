@@ -2,4 +2,5 @@
 *.so
 /test/fingerprint_test
 /test/raster_image_test
+/test/video_test
 /test/test_gif_animated_scaled.gif

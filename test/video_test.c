@@ -17,6 +17,9 @@ void test_load_gif()
     assert(dim.height == 344);
     assert(dur == 19.1);
 
+    intensity_t i;
+    assert(video_get_intensities(v, &i));
+
     video_free(v);
 }
 
@@ -32,6 +35,9 @@ void test_load_apng()
     assert(dim.height == 100);
     assert(dur == 1.5);
 
+    intensity_t i;
+    assert(video_get_intensities(v, &i));
+
     video_free(v);
 }
 
@@ -46,6 +52,9 @@ void test_load_webm()
     assert(dim.width == 277);
     assert(dim.height == 344);
     assert(dur == 17.7);
+
+    intensity_t i;
+    assert(video_get_intensities(v, &i));
 
     video_free(v);
 }
