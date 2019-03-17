@@ -7,6 +7,7 @@
 #include <unistd.h>
 
 #include <libavformat/avformat.h>
+#include <libavutil/imgutils.h>
 #include <libswscale/swscale.h>
 
 #include "video.h"
@@ -184,8 +185,6 @@ static video *video_initialize(video *v, void *buf, size_t len)
     // Video must have dimensions
     if (v->dimensions.width == 0 || v->dimensions.height == 0)
         goto error;
-
-    //av_dump_format(v->format, 0, "", 0);
 
     // All good
     return v;
@@ -429,10 +428,7 @@ int video_get_intensities(video *v, intensity_t *i)
             break;
 
         if (v->pkt->stream_index == v->vstream_idx) {
-            if (avcodec_send_packet(v->vctx, v->pkt) != 0)
-                continue;
-
-            if (avcodec_receive_frame(v->vctx, v->frame) == 0) {
+            if (avcodec_send_packet(v->vctx, v->pkt) == 0 && avcodec_receive_frame(v->vctx, v->frame) == 0) {
                 if (v->frame->pts + v->pkt->duration >= mid_pts) {
                     calculate_frame_intensities(v, i);
                     found = 1;
@@ -448,9 +444,193 @@ int video_get_intensities(video *v, intensity_t *i)
     return found;
 }
 
+static AVOutputFormat *container_format(const AVInputFormat *f)
+{
+    // Libav doesn't provide direct access to output container formats
+    // the way it does with e.g. codecs, so we have to look it up ourselves.
+    //
+    // Note that the casting is due to API const breakage.
+
+    void *state;
+    AVOutputFormat *ret = (AVOutputFormat *) av_muxer_iterate(&state);
+
+    while (ret != NULL) {
+        if (strcmp(f->name, ret->name) == 0)
+            return ret;
+
+        ret = (AVOutputFormat *) av_muxer_iterate(&state);
+    }
+
+    return NULL;
+}
+
+typedef struct {
+    AVFormatContext *format;
+    AVCodecContext *vcodec;
+    AVIOContext *avio;
+    AVPacket *pkt;
+    AVFrame *frame;
+    struct SwsContext *sws;
+
+    uint8_t *avio_buf;
+    uint8_t *buf;
+    size_t len;
+    int64_t pos;
+} video_output;
+
+static int write_packet(void *opaque, uint8_t *buf, int buf_size)
+{
+    video_output *vo = (video_output *) opaque;
+
+    // Inc by minimum size needed to accomodate packet,
+    // then double the size
+    if (vo->pos + buf_size > vo->len) {
+        vo->len += vo->pos + buf_size - vo->len;
+        vo->len *= 2;
+        vo->buf = (uint8_t *) realloc(vo->buf, vo->len);
+    }
+
+    memcpy(&vo->buf[vo->pos], buf, buf_size);
+
+    vo->pos += buf_size;
+
+    // Return how many bytes were written
+    return buf_size;    
+}
+
+static void video_output_free(video_output *vo)
+{
+    if (vo->sws)
+        sws_freeContext(vo->sws);
+    if (vo->frame)
+        av_frame_free(&vo->frame);
+    if (vo->pkt)
+        av_packet_free(&vo->pkt);
+    if (vo->vcodec)
+        avcodec_free_context(vo->vcodec);
+    if (vo->format)
+        avformat_free_context(vo->format);
+    if (vo->avio->buffer)
+        av_freep(&vo->avio->buffer);
+    if (vo->avio)
+        av_freep(&vo->avio);
+    if (vo->buf)
+        free(vo->buf);
+}
+
 // Scale this video proportionally to either a height of max_h,
 // or a width of max_w, whichever is lesser.
-video *video_scale(video *v, size_t max_w, size_t max_h);
+video *video_scale(video *v, size_t max_w, size_t max_h)
+{
+    // When scaling a video we would like to use the same
+    // - container
+    // - video codec and pixel format
+    // - audio codec and frames
+
+    video_output *vo = (video_output *) calloc(1, sizeof(video_output));
+    if (!vo)
+        goto error;
+
+    // Same container
+    AVOutputFormat *ctr = container_format(v->format->iformat);
+    if (avformat_alloc_output_context2(&vo->format, ctr, NULL, NULL) < 0)
+        goto error;
+
+    vo->avio_buf  = av_malloc(4096);
+    vo->avio      = avio_alloc_context(vo->avio_buf, 4096, 0, vo, NULL, &write_packet, NULL);
+    v->format->pb = vo->avio;
+
+    // Same video codec and pixel format
+    AVStream *vistream = v->format->streams[v->vstream_idx];
+    AVStream *vostream = avformat_new_stream(vo->format, NULL);
+    if (!vostream)
+        goto error;
+
+    if (avcodec_parameters_copy(vostream->codecpar, vistream->codecpar) < 0)
+        goto error;
+
+    // (Optional) same audio codec
+    if (v->astream_idx > -1) {
+        AVStream *aistream = v->format->streams[v->astream_idx];
+        AVStream *aostream = avformat_new_stream(vo->format, NULL);
+        if (!aostream)
+            goto error;
+
+        if (avcodec_parameters_copy(aostream->codecpar, aistream->codecpar) < 0)
+            goto error;
+    }
+
+    if (avformat_write_header(vo->format, NULL) < 0)
+        goto error;
+
+    uint32_t old_w = v->dimensions.width;
+    uint32_t old_h = v->dimensions.height;
+
+    double ratio = FFMIN(max_w / (double) old_w, max_h / (double) old_h);
+
+    uint32_t new_w = v->dimensions.width * ratio;
+    uint32_t new_h = v->dimensions.height * ratio;
+
+    // Create destination image
+    vo->frame = av_frame_alloc();
+    if (!vo->frame)
+        goto error;
+
+    vo->frame->format = v->vctx->pix_fmt;
+    vo->frame->width  = new_w;
+    vo->frame->height = new_h;
+
+    if (av_image_alloc(vo->frame->data, vo->frame->linesize, new_w, new_h, v->vctx->pix_fmt, 32) < 0)
+        goto error;
+
+    // Setup scaling context
+    vo->sws = sws_getContext(old_w, old_h, v->vctx->pix_fmt, new_w, new_h, v->vctx->pix_fmt, SWS_LANCZOS, NULL, NULL, NULL);
+    if (!vo->sws)
+        goto error;
+
+    // Reset the input stream
+    av_seek_frame(v->format, -1, 0, AVSEEK_FLAG_BACKWARD);
+
+    AVPacket outpkt;
+    int got_output;
+
+    while (1) {
+        // done reading
+        if (av_read_frame(v->format, v->pkt) < 0)
+            break;
+
+        if (v->pkt->stream_index == v->vstream_idx) {
+            // Video stream: read and scale this frame
+            if (avcodec_send_packet(v->vctx, v->pkt) == 0 && avcodec_receive_frame(v->vctx, v->frame) == 0) {
+                // Initialize output packet
+                av_init_packet(&outpkt);
+                outpkt.data = NULL;
+                outpkt.size = 0;
+
+                // Scale image into new frame
+                sws_scale(vo->sws, (const uint8_t **) v->frame->data, v->frame->linesize, 0, old_h, vo->frame->data, vo->frame->linesize);
+                vo->frame->pts = v->frame->pts;
+
+                // Create output data packet
+                // if (avcodec_encode_video2(vo->format
+
+                av_frame_unref(v->frame);
+            }
+        } else if (v->pkt->stream_index == v->astream_idx) {
+            // Audio stream: copy packet verbatim
+            av_interleaved_write_frame(vo->format, v->pkt);
+        }
+
+        av_packet_unref(v->pkt);
+    }
+
+    if (av_write_trailer(vo->format) < 0)
+        goto error;
+
+error:
+    video_output_free(vo);
+    return NULL;
+}
 
 // Write this video to memory. You must free() the returned memory.
 buf_t video_to_buffer(video *v);
